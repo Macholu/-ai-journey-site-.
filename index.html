@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Energy Monitor</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font as requested */
+            background-color: #f0f2f5;
+        }
+        /* Custom spinner for loading */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center py-10 px-4">
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-4xl border border-gray-200">
+        <h1 class="text-4xl font-bold text-gray-800 mb-6 text-center">Smart Home Energy Monitor</h1>
+
+        <!-- Overall Energy Summary -->
+        <div class="mb-8 p-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-md text-white text-center">
+            <h2 class="text-2xl font-semibold mb-2">Current Total Consumption</h2>
+            <p class="text-5xl font-extrabold" id="total-consumption">-- W</p>
+            <p class="text-lg opacity-80 mt-2">Simulated real-time data</p>
+        </div>
+
+        <!-- AI Insight Section -->
+        <div id="ai-insight-section" class="mb-8 p-6 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg shadow-md hidden">
+            <div class="flex items-center mb-3">
+                <svg class="w-6 h-6 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <h2 class="text-xl font-semibold">AI Anomaly Insight ✨</h2>
+            </div>
+            <p id="ai-insight-text" class="text-gray-700 mb-4"></p>
+            <div class="flex justify-end">
+                <button id="get-ai-insight-button" class="px-5 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-75 flex items-center">
+                    <span id="ai-loading-spinner" class="spinner mr-2 hidden"></span>
+                    Get AI Insight
+                </button>
+            </div>
+        </div>
+
+        <!-- Appliance-wise Consumption Chart -->
+        <div class="mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Appliance Consumption Over Time</h2>
+            <div class="bg-gray-50 p-4 rounded-lg shadow-inner border border-gray-100">
+                <canvas id="energyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Individual Appliance List (for details) -->
+        <div>
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Individual Appliance Details</h2>
+            <div id="appliance-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Appliance cards will be injected here by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Core Data Simulation Function ---
+        // This function simulates energy consumption data for various appliances.
+        // It's based on the `simulate_energy_data` concept we discussed.
+        function simulateEnergyData(numReadings, appliances, startTime = null, intervalSeconds = 60) {
+            const data = [];
+            let currentTimestamp = startTime ? new Date(startTime) : new Date();
+
+            // Define plausible power consumption ranges for different appliances (in Watts)
+            const appliancePowerRanges = {
+                "Refrigerator": { min: 50, max: 200, idle: 80, spike_prob: 0.1, anomaly_threshold: 300 }, // Added anomaly threshold
+                "TV": { min: 10, max: 150, idle: 5, spike_prob: 0.2, anomaly_threshold: 200 },
+                "Oven": { min: 1000, max: 3000, idle: 10, spike_prob: 0.05, anomaly_threshold: 3500 },
+                "Lights": { min: 20, max: 100, idle: 10, spike_prob: 0.3, anomaly_threshold: 150 },
+                "Washing Machine": { min: 500, max: 2500, idle: 15, spike_prob: 0.1, anomaly_threshold: 3000 },
+                "Dishwasher": { min: 800, max: 2000, idle: 10, spike_prob: 0.08, anomaly_threshold: 2500 },
+                "Microwave": { min: 600, max: 1500, idle: 5, spike_prob: 0.05, anomaly_threshold: 1800 },
+                "Air Conditioner": { min: 1500, max: 4000, idle: 50, spike_prob: 0.03, anomaly_threshold: 4500 },
+            };
+
+            for (let i = 0; i < numReadings; i++) {
+                for (const applianceId of appliances) {
+                    let powerConsumptionWatts;
+                    const range = appliancePowerRanges[applianceId] || { min: 50, max: 500, idle: 20, spike_prob: 0.1, anomaly_threshold: 600 }; // Default range
+
+                    // Simulate varying consumption
+                    if (Math.random() < range.spike_prob) {
+                        // Simulate a "spike" or active usage
+                        powerConsumptionWatts = Math.random() * (range.max - range.min) + range.min;
+                    } else {
+                        // Simulate lower, more consistent "idle" or standby usage
+                        powerConsumptionWatts = Math.random() * (range.idle * 2 - range.idle / 2) + range.idle / 2;
+                    }
+
+                    // Introduce a very rare, large spike for anomaly demonstration
+                    if (Math.random() < 0.005) { // 0.5% chance for a very large spike
+                        powerConsumptionWatts = range.anomaly_threshold * (1.2 + Math.random() * 0.5); // 20-70% above threshold
+                    }
+
+
+                    data.push({
+                        timestamp: new Date(currentTimestamp), // Clone date to avoid reference issues
+                        appliance_id: applianceId,
+                        power_consumption_watts: parseFloat(powerConsumptionWatts.toFixed(2))
+                    });
+                }
+                currentTimestamp.setSeconds(currentTimestamp.getSeconds() + intervalSeconds);
+            }
+            return data;
+        }
+
+        // --- UI Update Logic ---
+        let energyChart;
+        let simulatedData = [];
+        const updateInterval = 2000; // Update every 2 seconds
+        let currentAnomaly = null; // Stores details of the last detected anomaly for AI insight
+
+        // Function to initialize or update the chart
+        function updateChart(data) {
+            const labels = [...new Set(data.map(d => d.timestamp.toLocaleTimeString()))].slice(-15); // Last 15 readings
+            const applianceLabels = [...new Set(data.map(d => d.appliance_id))];
+
+            const datasets = applianceLabels.map(applianceId => {
+                const applianceData = data.filter(d => d.appliance_id === applianceId);
+                const consumptionValues = labels.map(label => {
+                    const record = applianceData.find(d => d.timestamp.toLocaleTimeString() === label);
+                    return record ? record.power_consumption_watts : 0;
+                });
+                return {
+                    label: applianceId,
+                    data: consumptionValues,
+                    borderColor: getRandomColor(),
+                    tension: 0.1,
+                    fill: false,
+                    pointRadius: 3,
+                };
+            });
+
+            if (energyChart) {
+                energyChart.data.labels = labels;
+                energyChart.data.datasets = datasets;
+                energyChart.update();
+            } else {
+                const ctx = document.getElementById('energyChart').getContext('2d');
+                energyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: datasets,
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y + ' W';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Power (Watts)'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Function to update the total consumption display
+        function updateTotalConsumption(data) {
+            // Get the latest readings for each appliance
+            const latestReadings = {};
+            data.forEach(d => {
+                latestReadings[d.appliance_id] = d.power_consumption_watts;
+            });
+            const total = Object.values(latestReadings).reduce((sum, current) => sum + current, 0);
+            document.getElementById('total-consumption').textContent = `${total.toFixed(2)} W`;
+        }
+
+        // Function to update individual appliance details
+        function updateApplianceList(data) {
+            const applianceListDiv = document.getElementById('appliance-list');
+            applianceListDiv.innerHTML = ''; // Clear previous entries
+
+            // Group data by appliance to get the latest reading for each
+            const latestApplianceData = {};
+            data.forEach(d => {
+                latestApplianceData[d.appliance_id] = d.power_consumption_watts;
+            });
+
+            for (const applianceId in latestApplianceData) {
+                const power = latestApplianceData[applianceId];
+                const card = `
+                    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-2">${applianceId}</h3>
+                        <p class="text-3xl font-bold text-blue-600">${power.toFixed(2)} W</p>
+                    </div>
+                `;
+                applianceListDiv.innerHTML += card;
+            }
+        }
+
+        // Helper function to get a random color for chart lines
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        // --- Anomaly Detection (Simplified for client-side UI) ---
+        function detectSimpleAnomaly(latestReadings) {
+            const appliancePowerRanges = {
+                "Refrigerator": { anomaly_threshold: 300 },
+                "TV": { anomaly_threshold: 200 },
+                "Oven": { anomaly_threshold: 3500 },
+                "Lights": { anomaly_threshold: 150 },
+                "Washing Machine": { anomaly_threshold: 3000 },
+                "Dishwasher": { anomaly_threshold: 2500 },
+                "Microwave": { anomaly_threshold: 1800 },
+                "Air Conditioner": { anomaly_threshold: 4500 },
+            };
+
+            for (const applianceId in latestReadings) {
+                const power = latestReadings[applianceId];
+                const threshold = (appliancePowerRanges[applianceId] && appliancePowerRanges[applianceId].anomaly_threshold) || 600;
+
+                if (power > threshold) {
+                    return {
+                        appliance_id: applianceId,
+                        measured_watts: power,
+                        threshold_used: threshold,
+                        timestamp: new Date()
+                    };
+                }
+            }
+            return null; // No anomaly detected
+        }
+
+        // --- Gemini API Integration for Anomaly Explanation ---
+        async function getGeminiAnomalyExplanation(anomalyDetails) {
+            const insightSection = document.getElementById('ai-insight-section');
+            const insightText = document.getElementById('ai-insight-text');
+            const insightButton = document.getElementById('get-ai-insight-button');
+            const loadingSpinner = document.getElementById('ai-loading-spinner');
+
+            // Show loading state
+            insightButton.disabled = true;
+            insightText.textContent = "Generating insight, please wait...";
+            loadingSpinner.classList.remove('hidden');
+
+            const prompt = `An appliance named "${anomalyDetails.appliance_id}" is currently consuming ${anomalyDetails.measured_watts.toFixed(2)} watts, which is significantly higher than its typical threshold of ${anomalyDetails.threshold_used} watts. Provide a concise explanation (3-4 sentences) of why this might be an anomaly and suggest 2-3 simple troubleshooting steps or energy-saving tips specifically for this type of appliance.`;
+
+            let chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            const payload = { contents: chatHistory };
+            const apiKey = ""; // Canvas will provide this key at runtime
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    insightText.textContent = text;
+                } else {
+                    insightText.textContent = "Could not get AI insight. Please try again.";
+                    console.error("Gemini API response structure unexpected:", result);
+                }
+            } catch (error) {
+                insightText.textContent = "Error generating AI insight: " + error.message;
+                console.error("Error calling Gemini API:", error);
+            } finally {
+                // Hide loading state
+                insightButton.disabled = false;
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        // Main update loop
+        function refreshDataAndUI() {
+            // Simulate a new set of readings (e.g., for the last few minutes)
+            const newReadings = simulateEnergyData(
+                1, // Simulate just 1 new reading per appliance
+                ["Refrigerator", "TV", "Oven", "Lights", "Washing Machine", "Dishwasher"],
+                null, // Use current time
+                1 // Interval of 1 second for fresh data for chart
+            );
+            simulatedData.push(...newReadings);
+
+            // Keep only the last 50 readings to prevent performance issues with too much data
+            const maxDataPoints = 50 * new Set(simulatedData.map(d => d.appliance_id)).size;
+            if (simulatedData.length > maxDataPoints) {
+                simulatedData = simulatedData.slice(simulatedData.length - maxDataPoints);
+            }
+
+            updateChart(simulatedData);
+            updateTotalConsumption(simulatedData);
+            updateApplianceList(simulatedData);
+
+            // Check for anomalies after updating data
+            const latestApplianceReadings = {};
+            simulatedData.forEach(d => {
+                latestApplianceReadings[d.appliance_id] = d.power_consumption_watts;
+            });
+
+            currentAnomaly = detectSimpleAnomaly(latestApplianceReadings);
+            const aiInsightSection = document.getElementById('ai-insight-section');
+            const aiInsightText = document.getElementById('ai-insight-text');
+            const getAiInsightButton = document.getElementById('get-ai-insight-button');
+
+            if (currentAnomaly) {
+                aiInsightSection.classList.remove('hidden');
+                aiInsightText.textContent = `Anomaly detected for ${currentAnomaly.appliance_id}: ${currentAnomaly.measured_watts.toFixed(2)} W!`;
+                // Set up the button to call Gemini for this specific anomaly
+                getAiInsightButton.onclick = () => getGeminiAnomalyExplanation(currentAnomaly);
+            } else {
+                aiInsightSection.classList.add('hidden');
+                // Clear previous AI text if anomaly resolves
+                aiInsightText.textContent = "";
+            }
+        }
+
+        // Start the simulation and UI updates when the page loads
+        window.onload = function() {
+            // Initial data generation
+            simulatedData = simulateEnergyData(
+                15, // 15 initial readings for each appliance
+                ["Refrigerator", "TV", "Oven", "Lights", "Washing Machine", "Dishwasher"],
+                new Date(new Date().getTime() - 15 * 60 * 1000), // Start 15 minutes ago
+                60 // 1 minute interval for initial data
+            );
+
+            refreshDataAndUI(); // Populate UI with initial data
+            setInterval(refreshDataAndUI, updateInterval); // Set up continuous updates
+        };
+    </script>
+</body>
+</html>
